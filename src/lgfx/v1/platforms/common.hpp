@@ -61,6 +61,10 @@ Contributors:
 
 #include "framebuffer/common.hpp"
 
+#elif defined (SAPPHIRE)
+
+#include "sapphire/common.hpp"
+
 #else
 
 #error unknown platform...

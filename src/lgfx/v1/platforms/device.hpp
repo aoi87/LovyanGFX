@@ -99,5 +99,9 @@ Contributors:
 #include "sdl/Bus_I2C.hpp"
 #include "sdl/Panel_sdl.hpp"
 
+#elif defined (SAPPHIRE)
+
+#include "sapphire/Bus_LCDCTRL.hpp"
+
 #endif
 
