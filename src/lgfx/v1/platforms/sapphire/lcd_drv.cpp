@@ -41,7 +41,15 @@ void LCD_CTRL::sendDataWithDMA(uint16_t *data, uint32_t size) {
     dmasg_input_memory(APB_DMAC_BASE, 0, (uint32_t)data, 4);
     dmasg_output_stream(APB_DMAC_BASE, 0, 0, 0, 0, 0);
     dmasg_direct_start(APB_DMAC_BASE, 0, size, 0);
-    while(dmasg_busy(APB_DMAC_BASE, 0) != 0);
+    // while(dmasg_busy(APB_DMAC_BASE, 0) != 0);
+}
+
+bool LCD_CTRL::dmaBusy() {
+    return dmasg_busy(APB_DMAC_BASE, 0) != 0;
+}
+
+bool LCD_CTRL::fifoBusy() {
+    return (read_u32(APB_LCD_BASE + 0x0000) & 0x00000001) == 0x00000001;
 }
 
 void LCD_CTRL::lcdInit() {

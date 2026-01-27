@@ -38,8 +38,6 @@ namespace lgfx
 
   bool Bus_LCDCTRL::init(void)
   {
-    // _inited = spi::init(_cfg.spi_host, _cfg.pin_sclk, _cfg.pin_miso, _cfg.pin_mosi, dma_ch).has_value();
-
     return true;
   }
 
@@ -54,20 +52,26 @@ namespace lgfx
   void Bus_LCDCTRL::beginTransaction(void)
   {
     // if (_cfg.use_lock) spi::beginTransaction(_cfg.spi_host);
+    while(lcd.fifoBusy());
+    while(lcd.dmaBusy());
   }
 
   void Bus_LCDCTRL::endTransaction(void)
   {
     // if (_cfg.use_lock) spi::endTransaction(_cfg.spi_host);
+    while(lcd.fifoBusy());
+    while(lcd.dmaBusy());
   }
 
   void Bus_LCDCTRL::wait(void)
   {
+    while(lcd.fifoBusy());
+    while(lcd.dmaBusy());
   }
 
   bool Bus_LCDCTRL::busy(void) const
   {
-    return false;
+    return lcd.fifoBusy() || lcd.dmaBusy();
   }
 
   bool Bus_LCDCTRL::writeCommand(uint32_t data, uint_fast8_t bit_length)
@@ -78,13 +82,6 @@ namespace lgfx
       lcd.sendCommand((uint8_t)data);
       data >>= 8;
     } while (--bytes);
-    // lcd.sendCommand((uint8_t)data);
-    // if (bit_length >= 16) {
-    //   lcd.sendCommand((uint8_t)(data >> 8));
-    // }
-    // if (bit_length >= 24) {
-    //   lcd.sendCommand((uint8_t)(data >> 16));
-    // }
     return true;
   }
 
@@ -96,13 +93,6 @@ namespace lgfx
       lcd.sendData8((uint8_t)data);
       data >>= 8;
     } while (--bytes);
-    // lcd.sendData8((uint8_t)data);
-    // if (bit_length >= 16) {
-    //   lcd.sendData8((uint8_t)(data >> 8));
-    // }
-    // if (bit_length >= 24) {
-    //   lcd.sendData8((uint8_t)(data >> 16));
-    // }
   }
 
   void Bus_LCDCTRL::writeDataRepeat(uint32_t data, uint_fast8_t bit_length, uint32_t count)
@@ -124,31 +114,51 @@ namespace lgfx
     }
 
     uint32_t size = (bit_length>>3) * count;
-    // uint8_t* buf = (uint8_t*)malloc(size);
-    // if (buf == nullptr) {
-    //   return;
-    // }
-    // uint8_t* p = buf;
-    // for (int i=0; i<size/3; i++) {
-    //   memcpy(p, regbuf, 3);
-    //   p += 3;
-    // }
-    // memcpy(p, regbuf, size%3);
-
-    // lcd.sendDataWithDMA(buf, size);
-    // free(buf);
-    
-    uint8_t* p = (uint8_t*)regbuf;
-    uint32_t pp = 0;
-    for (int i=0; i<size; i++) {
-      lcd.sendData8(p[pp++]);
-      if (pp >= 12) pp = 0;
+    uint8_t* buf = (uint8_t*)malloc(size);
+    if (buf == nullptr) {
+      return;
     }
+    uint8_t* p = buf;
+    for (int i=0; i<size/3; i++) {
+      memcpy(p, regbuf, 3);
+      p += 3;
+    }
+    memcpy(p, regbuf, size%3);
+
+    wait();
+    lcd.sendDataWithDMA((uint16_t*)buf, size);
+    wait();
+    free(buf);
+    
+    // uint8_t* p = (uint8_t*)regbuf;
+    // uint32_t pp = 0;
+    // for (int i=0; i<size; i++) {
+    //   lcd.sendData8(p[pp++]);
+    //   if (pp >= 12) pp = 0;
+    // }
   }
 
   void Bus_LCDCTRL::writePixels(pixelcopy_t* param, uint32_t length)
   {
-    const uint8_t bytes = param->dst_bits >> 3;
+    const uint8_t bytes = param->dst_bits >> 3; // 変換後の1ピクセルあたりのバイト数
+    if (_cfg.dma_channel)
+    {
+      uint32_t limit = (bytes == 2) ? 32 : 24;  // 1回のDMA転送で送る最大ピクセル数
+      uint32_t len;
+      do
+      {
+        len = (limit << 1) <= length ? limit : length;      // 1DMAあたりの転送ピクセル数
+        if (limit <= 256) limit <<= 1;                      // limitを2倍ずつ増やしていく(最大256ピクセルまで)
+        auto dmabuf = _flip_buffer.getBuffer(len * bytes);  // DMAバッファの確保
+        if (dmabuf == nullptr) {
+          break;
+        }
+        param->fp_copy(dmabuf, 0, len, param);  // データをバッファにコピー
+        writeBytes(dmabuf, len * bytes, true, true);  // DMAで送信
+      } while (length -= len);
+      if (length == 0) return;
+    }
+
     uint32_t data;
     param->fp_copy((uint8_t*)&data, 0, 1, param);
     lcd.sendData8((uint8_t)data);
@@ -175,8 +185,14 @@ namespace lgfx
   void Bus_LCDCTRL::writeBytes(const uint8_t* data, uint32_t length, bool dc, bool use_dma)
   {
     if (dc) {
-      for (int i=0; i<length; i++) {
-        lcd.sendData8(data[i]);
+      if (use_dma) {
+        wait();
+        lcd.sendDataWithDMA((uint16_t*)data, length);
+        wait();
+      } else {
+        for (int i=0; i<length; i++) {
+          lcd.sendData8(data[i]);
+        }
       }
     } else {
       for (int i=0; i<length; i++) {
@@ -198,7 +214,7 @@ namespace lgfx
 
   uint8_t* Bus_LCDCTRL::getDMABuffer(uint32_t length)
   {
-    return nullptr;
+    return _flip_buffer.getBuffer(length);
   }
 
   void Bus_LCDCTRL::beginRead(uint_fast8_t dummy_bits)
@@ -227,20 +243,20 @@ namespace lgfx
   {
   }
 
-  void Bus_LCDCTRL::_alloc_dmadesc(size_t len)
-  {
-    // if (_dmadesc) heap_caps_free(_dmadesc);
-    // _dmadesc_size = len;
-    // _dmadesc = (lldesc_t*)heap_caps_malloc(sizeof(lldesc_t) * len, MALLOC_CAP_DMA);
-  }
+  // void Bus_LCDCTRL::_alloc_dmadesc(size_t len)
+  // {
+  //   // if (_dmadesc) heap_caps_free(_dmadesc);
+  //   // _dmadesc_size = len;
+  //   // _dmadesc = (lldesc_t*)heap_caps_malloc(sizeof(lldesc_t) * len, MALLOC_CAP_DMA);
+  // }
 
-  void Bus_LCDCTRL::_spi_dma_reset(void)
-  {
-  }
+  // void Bus_LCDCTRL::_spi_dma_reset(void)
+  // {
+  // }
 
-  void Bus_LCDCTRL::_setup_dma_desc_links(const uint8_t *data, int32_t len)
-  {
-  }
+  // void Bus_LCDCTRL::_setup_dma_desc_links(const uint8_t *data, int32_t len)
+  // {
+  // }
 
 //----------------------------------------------------------------------------
  }

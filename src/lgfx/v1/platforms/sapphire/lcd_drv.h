@@ -21,6 +21,8 @@ public:
     void sendData8(uint8_t data);
     void sendData16(uint16_t data);
     void sendDataWithDMA(uint16_t *data, uint32_t size);
+    bool dmaBusy();
+    bool fifoBusy();
 private:
     void lcdReset();
     const uint32_t GPIO_LCD = SYSTEM_GPIO_1_IO_CTRL;

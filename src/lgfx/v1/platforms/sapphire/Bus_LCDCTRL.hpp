@@ -78,12 +78,12 @@ namespace lgfx
 
   private:
 
-    void _alloc_dmadesc(size_t len);
-    void _spi_dma_reset(void);
-    void _setup_dma_desc_links(const uint8_t *data, int32_t len);
+    // void _alloc_dmadesc(size_t len);
+    // void _spi_dma_reset(void);
+    // void _setup_dma_desc_links(const uint8_t *data, int32_t len);
 
     config_t _cfg;
-    // FlipBuffer _flip_buffer;
+    FlipBuffer _flip_buffer;
     uint8_t _dma_ch = 0;
   };
 
