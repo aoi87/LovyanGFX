@@ -20,6 +20,7 @@ public:
     void sendCommand(uint8_t cmd);
     void sendData8(uint8_t data);
     void sendData16(uint16_t data);
+    void sendRptData(uint32_t lenByte, uint8_t size, uint32_t data);
     void sendDataWithDMA(uint16_t *data, uint32_t size);
     bool dmaBusy();
     bool fifoBusy();

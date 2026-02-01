@@ -97,6 +97,11 @@ namespace lgfx
 
   void Bus_LCDCTRL::writeDataRepeat(uint32_t data, uint_fast8_t bit_length, uint32_t count)
   {
+  #if 1
+    uint8_t size = bit_length >> 3;
+    uint32_t lenByte = size * count;
+    lcd.sendRptData(lenByte, size, data);
+  #else
     // 24bit bafedcba dcbafedc fedcbafe ...
     // 16bit dcbadcba ...
     //  8bit babababa ...
@@ -130,12 +135,13 @@ namespace lgfx
     wait();
     free(buf);
     
-    // uint8_t* p = (uint8_t*)regbuf;
-    // uint32_t pp = 0;
-    // for (int i=0; i<size; i++) {
-    //   lcd.sendData8(p[pp++]);
-    //   if (pp >= 12) pp = 0;
-    // }
+    uint8_t* p = (uint8_t*)regbuf;
+    uint32_t pp = 0;
+    for (int i=0; i<size; i++) {
+      lcd.sendData8(p[pp++]);
+      if (pp >= 12) pp = 0;
+    }
+  #endif
   }
 
   void Bus_LCDCTRL::writePixels(pixelcopy_t* param, uint32_t length)
@@ -188,7 +194,7 @@ namespace lgfx
       if (use_dma) {
         wait();
         lcd.sendDataWithDMA((uint16_t*)data, length);
-        wait();
+        // wait();
       } else {
         for (int i=0; i<length; i++) {
           lcd.sendData8(data[i]);

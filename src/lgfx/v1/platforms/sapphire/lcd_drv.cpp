@@ -37,6 +37,14 @@ void LCD_CTRL::sendData16(uint16_t dat) {
     sendData8(dat);         //下位8bit
 }
 
+void LCD_CTRL::sendRptData(uint32_t lenByte, uint8_t size, uint32_t data) {
+    while(fifoBusy());
+    write_u32(lenByte, APB_LCD_BASE + 0x100);
+    write_u32(size, APB_LCD_BASE + 0x104);
+    write_u32(data, APB_LCD_BASE + 0x108);
+    write_u32(1, APB_LCD_BASE + 0x10C);
+}
+
 void LCD_CTRL::sendDataWithDMA(uint16_t *data, uint32_t size) {
     dmasg_input_memory(APB_DMAC_BASE, 0, (uint32_t)data, 4);
     dmasg_output_stream(APB_DMAC_BASE, 0, 0, 0, 0, 0);
